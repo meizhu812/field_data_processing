@@ -46,7 +46,7 @@ def show_progress(progress: pool.MapResult):
     total = progress.__getattribute__('_number_left')
     while not progress.ready():
         remain = progress.__getattribute__('_number_left')
-        print("\r%i/%i remains" % (remain, total),end='')
+        print("\r%i/%i remains" % (remain, total), end='')
         sleep(1)
 
 class ProgressBar:
