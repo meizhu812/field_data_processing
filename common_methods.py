@@ -3,7 +3,7 @@
 aaa
 """
 from os import mkdir, walk, path
-from accessories import Timer, ProgressBar as PgB
+from gadgets import Timer, ProgressBar as PgB
 from pandas import DataFrame, Series, read_csv, read_pickle
 from multiprocessing import Pool
 

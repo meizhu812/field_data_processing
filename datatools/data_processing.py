@@ -2,39 +2,49 @@
 """
 #
 """
-from os import walk, path, makedirs, cpu_count
+import os
 from time import sleep
-from pandas import DataFrame, read_csv, concat, date_range
+from pandas import DataFrame, read_csv, read_pickle, concat, date_range
 from multiprocessing import Pool
-from accessories import Timer, show_progress
+from gadgets.accessories import Timer, show_progress
 from itertools import islice
 
 
-def list_data_files(*, target_dir: str, file_ext: str, file_init: str) -> list:
+def get_data_files(*, data_path: str, file_init: str, file_ext: str) -> list:
+    print("# Listing data files in folder:\n"
+          "# [{}]\n".format(data_path))
     data_files = []
-    for (dir_name, dirs_here, files_here) in walk(target_dir):
+    for (dir_name, dirs_here, files_here) in os.walk(data_path):
         for file in files_here:
             if file.endswith(file_ext) and file.startswith(file_init):
-                file_path = path.join(dir_name, file)
-                data_file = {'file_path': file_path}
-                data_files.append(data_file)
-    for data_file in (data_files[:10] + data_files[-10:]):  # print heads and tails
-        print(data_file['file_path'][len(target_dir):])  # print only file name
-    print('\n[ ' + str(len(data_files)) + ' ] Data files found.')
+                file_path = os.path.join(dir_name, file)
+                data_files.append({'path': file_path, 'name': file})
+    for data_file in data_files[:7]:  # print heads
+        print(data_file['name'])
+    print(6 * "...")
+    for data_file in data_files[-7:]:  # print tails
+        print(data_file['name'])
+    print('\n# [ ' + str(len(data_files)) + ' ] Data files found.')
     input("# Check sequence of data files, press Enter to continue...\n")
     return data_files
 
+def read_temp_data(temp_path):
+    timer_read = Timer()
+    timer_read.start("Reading merged data from temp file", "Reading")
+    temp_file = temp_path + r'\data_save'
+    print("# Reading data from temp file :\n"
+          "# [{}]".format(temp_file))
+    data = read_pickle(temp_file)
+    timer_read.stop()
+    return data
 
 def read_data_file(data_file: dict, data_format: dict) -> DataFrame:
-    datum = read_csv(data_file['file_path'], **data_format)
+    datum = read_csv(data_file['path'], **data_format)
     datum.set_index(datum.columns[0], inplace=True)
     return datum
 
-def write_data_file(data:DataFrame, path:str):
-    data.to_csv(path, index=False)
-    return path
 
-def data_merge(*, data_files: list, data_format: dict, temp_dir: str, output_dir: str = '', cpus= cpu_count()):
+def data_merge(*, data_files: list, data_format: dict, temp_path: str, output_dir: str = '', cpus= os.cpu_count()):
     timer_merge = Timer()
     timer_merge.start("Reading data files for merging", "Initializing")
     with Pool(cpus) as p:
@@ -45,8 +55,8 @@ def data_merge(*, data_files: list, data_format: dict, temp_dir: str, output_dir
     timer_merge.switch("Merging data")
     data_merged = concat(datum_list)
     timer_merge.switch("Saving data")
-    makedirs(temp_dir, exist_ok=True)
-    data_merged.to_pickle(temp_dir + r'\data_save')
+    os.makedirs(temp_path, exist_ok=True)
+    data_merged.to_pickle(temp_path + r'\data_save')
     timer_merge.stop()
     return data_merged
 
@@ -57,13 +67,13 @@ def split_data(data_divided: DataFrame, divide_time, output_dir: str):
             data_part = data_divided[divide_time[i]:(divide_time[i + 1])]
             part_name = str(divide_time[i + 1].date()) + '_' + str(divide_time[i + 1].time()).replace(':', '-')[:-3]
             file_path = output_dir + '\\' + part_name + '.csv'
-            write_data_file(data_part,file_path)
+            data_part.to_csv(file_path, index=False)
         except:
             # print(split_time[i + 1])
             pass
         i += 1
 
-def data_period_divide(data: DataFrame, data_period, cpus= cpu_count()):
+def data_period_divide(data: DataFrame, data_period, cpus= os.cpu_count()):
     chunk_size, extra = divmod(len(data_period), cpus * 4)
     if extra:
         chunk_size += 1
@@ -79,11 +89,11 @@ def data_period_divide(data: DataFrame, data_period, cpus= cpu_count()):
 
 
 
-def data_split(data: DataFrame, data_period, output_dir: str, cpus= cpu_count()):
+def data_split(data: DataFrame, data_period, output_dir: str, cpus= os.cpu_count()):
     data_quality = DataFrame([])
     data_quality['time'] = data_period
     data_quality['count'] = -1
-    makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     timer_split = Timer()
     timer_split.start("Splitting data files", "Processing data")
     data_period_divided_all = data_period_divide(data, data_period, cpus)
@@ -122,13 +132,16 @@ def data_split(data: DataFrame, data_period, output_dir: str, cpus= cpu_count())
 
 if __name__ == '__main__':
     from test_parameters import PROJECT, SONIC, AMMONIA_H
-
-    sonic_files = list_data_files(target_dir=SONIC.PATH, **SONIC.FILE_PATTERN)
-    sonic_data = data_merge(data_files=sonic_files,
-                            data_format=SONIC.DATA_FORMAT,
-                            temp_dir=SONIC.TEMP_PATH)
+    try:
+        sonic_data = read_temp_data(temp_path=SONIC.TEMP_PATH)
+    except FileNotFoundError:
+        print("Merged data does not exist!")
+        sonic_files = get_data_files(data_path=SONIC.PATH, **SONIC.FILE_PATTERN)
+        sonic_data = data_merge(data_files=sonic_files,
+                                data_format=SONIC.DATA_FORMAT,
+                                temp_path=SONIC.TEMP_PATH)
     data_split(sonic_data, SONIC.DATA_PERIOD, SONIC.TEMP_PATH)
-    ammonia_files = list_data_files(target_dir=AMMONIA_H.PATH, **AMMONIA_H.FILE_PATTERN)
+    ammonia_files = get_data_files(data_path=AMMONIA_H.PATH, **AMMONIA_H.FILE_PATTERN)
     ammonia_data = data_merge(data_files=ammonia_files,
                               data_format=AMMONIA_H.DATA_FORMAT,
-                              temp_dir=AMMONIA_H.TEMP_PATH)
+                              temp_path=AMMONIA_H.TEMP_PATH)

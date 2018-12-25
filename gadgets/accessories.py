@@ -1,6 +1,6 @@
 # coding=utf-8
 """
-accessories
+gadgets
 """
 from time import time, sleep
 from multiprocessing import pool
@@ -30,7 +30,7 @@ class Timer:
     def stop(self):
         self.stop_time = time()
         print('| [%s Completed in %s seconds.]' % (self.action, self.elapsed))
-        print('||| [%s Completed in %s seconds.]' % (self.process, self.elapsed_total))
+        print('||| [%s Completed in %s seconds.]\n' % (self.process, self.elapsed_total))
 
     @property
     def elapsed(self) -> str:
@@ -42,12 +42,14 @@ class Timer:
         elapsed_total = str(round(time() - self.start_time, 2))
         return elapsed_total
 
+
 def show_progress(progress: pool.MapResult):
     total = progress.__getattribute__('_number_left')
     while not progress.ready():
         remain = progress.__getattribute__('_number_left')
         print("\r%i/%i remains" % (remain, total), end='')
         sleep(1)
+
 
 class ProgressBar:
     """
@@ -115,7 +117,7 @@ class ProgressBar:
 
 if __name__ == '__main__':
     timer_test = Timer()
-    timer_test.start('Testing Timer...')
+    timer_test.start('Testing Timer...', 'First action')
     sleep(0.5)
     print(timer_test.elapsed)
     sleep(0.5)
