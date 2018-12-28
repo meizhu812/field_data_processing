@@ -3,10 +3,10 @@
 #
 """
 import os
-from time import sleep
-from pandas import DataFrame, read_csv, read_pickle, concat, date_range
-from multiprocessing import Pool
-from gadgets.accessories import Timer, show_progress
+from pandas import DataFrame, read_csv, read_pickle, concat
+from pandas.tseries.offsets import Minute
+from multiprocessing import Pool, freeze_support
+from accessories import Timer, show_progress
 from itertools import islice
 
 
@@ -28,6 +28,7 @@ def get_data_files(*, data_path: str, file_init: str, file_ext: str) -> list:
     input("# Check sequence of data files, press Enter to continue...\n")
     return data_files
 
+
 def read_temp_data(temp_path):
     timer_read = Timer()
     timer_read.start("Reading merged data from temp file", "Reading")
@@ -38,13 +39,16 @@ def read_temp_data(temp_path):
     timer_read.stop()
     return data
 
+
 def read_data_file(data_file: dict, data_format: dict) -> DataFrame:
     datum = read_csv(data_file['path'], **data_format)
     datum.set_index(datum.columns[0], inplace=True)
     return datum
 
 
-def data_merge(*, data_files: list, data_format: dict, temp_path: str, output_dir: str = '', cpus= os.cpu_count()):
+def data_merge(*, data_files: list, data_format: dict, temp_path: str, output_dir: str = '', cpus=os.cpu_count()):
+    # if __name__ == 'datatools.processing':
+    freeze_support()
     timer_merge = Timer()
     timer_merge.start("Reading data files for merging", "Initializing")
     with Pool(cpus) as p:
@@ -60,36 +64,63 @@ def data_merge(*, data_files: list, data_format: dict, temp_path: str, output_di
     timer_merge.stop()
     return data_merged
 
+
 def split_data(data_divided: DataFrame, divide_time, output_dir: str):
     i = 0
     while i < len(divide_time):
         try:
-            data_part = data_divided[divide_time[i]:(divide_time[i + 1])]
-            part_name = str(divide_time[i + 1].date()) + '_' + str(divide_time[i + 1].time()).replace(':', '-')[:-3]
+            data_part = data_divided[divide_time[i]:(divide_time[i] + Minute(15))]
+            part_name = str((divide_time[i] + Minute(15)).date()) + '_' + str(
+                (divide_time[i] + Minute(15)).time()).replace(':', '-')[:-3]
             file_path = output_dir + '\\' + part_name + '.csv'
             data_part.to_csv(file_path, index=False)
         except:
             # print(split_time[i + 1])
             pass
         i += 1
+    return True
 
-def data_period_divide(data: DataFrame, data_period, cpus= os.cpu_count()):
-    chunk_size, extra = divmod(len(data_period), cpus * 4)
+
+def data_period_divide(data: DataFrame, data_period, cpus=os.cpu_count()):
+    chunk_size, extra = divmod(len(data_period), cpus * 8)
     if extra:
         chunk_size += 1
     split_time_iter = iter(data_period)
+    # TODO
     while 1:
+        divide_time = tuple(islice(split_time_iter, chunk_size))
+        if not divide_time:
+            return
+        successful_divided = False
+        i = 0
+        j = -1
+        start_time = divide_time[i]
+        end_time = divide_time[j] + Minute(15)
+        # try:
+        #     start_time = divide_time[i]
+        #     start_data = data[start_time]
+        #     del start_data
+        # except KeyError:
+        #     i += 1
+        #     continue
+        # try:
+        #     end_time = divide_time[j] + Minute(15)
+        #     end_data = data[end_time]
+        #     del end_data
+        # except KeyError:
+        #     j -= 1
+        #     continue
+        # successful_divided = True
         try:
-            divide_time = tuple(islice(split_time_iter, chunk_size))
-            if not divide_time:
-                return
-            yield (data[divide_time[0]:divide_time[-1]], divide_time)
-        except KeyError:
+            yield (data[start_time:end_time], divide_time)
+        except:
             pass
 
 
-
-def data_split(data: DataFrame, data_period, output_dir: str, cpus= os.cpu_count()):
+def data_split(data: DataFrame, data_period, output_dir: str, cpus=os.cpu_count()):
+    print(__name__)
+    # if __name__ == 'datatools.processing':
+    freeze_support()
     data_quality = DataFrame([])
     data_quality['time'] = data_period
     data_quality['count'] = -1
@@ -97,41 +128,31 @@ def data_split(data: DataFrame, data_period, output_dir: str, cpus= os.cpu_count
     timer_split = Timer()
     timer_split.start("Splitting data files", "Processing data")
     data_period_divided_all = data_period_divide(data, data_period, cpus)
-    with Pool(cpus) as p:
+    p = Pool(cpus)
+    timer_split.switch('Writing data files')
+    results = [p.apply_async(split_data, (data_period_divided[0], data_period_divided[1], output_dir)) for
+               data_period_divided in data_period_divided_all]
+    print(len(results))
+    for result in results:
+        result.wait()
 
-        timer_split.switch('Writing data files')
-        for data_period_divided in data_period_divided_all:
-            p.apply_async(split_data, (data_period_divided[0], data_period_divided[1], output_dir))
-        p.close()
-        p.join()
-
-
-
-        # i = -1
-        # data_and_paths = []
-        # while i < (len(split_time) - 2):
-        #     i += 1
-        #     try:
-        #         data_part = data[split_time[i]:(split_time[i + 1])]
-        #         part_name = str(split_time[i + 1].date()) + '_' + str(split_time[i + 1].time()).replace(':', '-')[:-3]
-        #         file_path = output_dir + '\\' + part_name + '.csv'
+    p.close()
+    p.join()
 
 
-    # output.get()
-    # print(output)
-        # pgb_split.show(i+1.0)
-        # data_time1=data_part.index.strftime('%Y-%m-%d %H:%M:%S.%f').tolist()
-        # data_time2=[]
-        # for a1 in data_time1:
-        #     a1=a1[:-5].rstrip('0').rstrip('.')
-        #     data_time2.append(a1)
-        # data_part['dt']=data_time2
-        # data_part.drop(labels=['dt'], axis=1, inplace=True)
-        # data_part.insert(0, 'dt', data_time2)
-    timer_split.stop()
+def data_resample(data, freq, output_dir):
+    print("\nResampling data")
+    data = data.tshift(8, freq='H')
+    data = data.tshift(15, freq='T')
+    data_resamp = data.resample(freq).mean()
+    os.makedirs(output_dir, exist_ok=True)
+    data_resamp.to_csv(output_dir + r'\data_resamp.csv')
+    return ()
+
 
 if __name__ == '__main__':
-    from test_parameters import PROJECT, SONIC, AMMONIA_H
+    from parameters.test_parameters import PROJECT, SONIC, AMMONIA_H
+
     try:
         sonic_data = read_temp_data(temp_path=SONIC.TEMP_PATH)
     except FileNotFoundError:
@@ -139,9 +160,13 @@ if __name__ == '__main__':
         sonic_files = get_data_files(data_path=SONIC.PATH, **SONIC.FILE_PATTERN)
         sonic_data = data_merge(data_files=sonic_files,
                                 data_format=SONIC.DATA_FORMAT,
-                                temp_path=SONIC.TEMP_PATH)
-    data_split(sonic_data, SONIC.DATA_PERIOD, SONIC.TEMP_PATH)
+                                temp_path=SONIC.TEMP_PATH,
+                                cpus=16)
+    data_split(sonic_data, SONIC.DATA_PERIOD, SONIC.TEMP_PATH, cpus=16)
     ammonia_files = get_data_files(data_path=AMMONIA_H.PATH, **AMMONIA_H.FILE_PATTERN)
     ammonia_data = data_merge(data_files=ammonia_files,
                               data_format=AMMONIA_H.DATA_FORMAT,
                               temp_path=AMMONIA_H.TEMP_PATH)
+    ammonia_data = ammonia_data.tshift(8, freq='H')
+    ammonia_data = ammonia_data.tshift(15, freq='T')
+    data_resample(ammonia_data, PROJECT.FREQ, AMMONIA_H.TEMP_PATH)

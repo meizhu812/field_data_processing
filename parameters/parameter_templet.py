@@ -10,6 +10,7 @@ class DataDescription:
     def __init__(self, project: ProjectConfiguration, sub_path: str, data_format: dict, file_pattern, data_period=None):
         self.PATH = project.PATH + sub_path
         self.TEMP_PATH = project.TEMP_PATH + sub_path
+        self.OUTPUT_PATH = self.PATH + r"\output"
         self.DATA_FORMAT = data_format
         self.FILE_PATTERN = file_pattern
         self.DATA_PERIOD = data_period

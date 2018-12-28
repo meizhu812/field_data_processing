@@ -1,6 +1,6 @@
 # coding=utf-8
 from pandas import date_range
-from parameter_templet import ProjectConfiguration,DataDescription
+from parameters.parameter_templet import ProjectConfiguration,DataDescription
 
 PROJECT = ProjectConfiguration(path=r'D:\Temp\test_data',
                                freq='15T',
