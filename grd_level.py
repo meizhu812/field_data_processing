@@ -1,5 +1,5 @@
 # coding=utf-8
-from datatools import get_data_files
+from _datatools import get_files_list
 import pandas as pd
 
 # Parameters ###########################################################################################################
@@ -7,7 +7,7 @@ DATA_PATH = r'd:\Desktop\present_work\01_ammonia\02_prelim\03_Summer2018\01_foot
 INIT = '18'
 EXT = '.grd'
 ########################################################################################################################
-grid_files = get_data_files(data_path=DATA_PATH, file_ext=EXT, file_init=INIT)
+grid_files = get_files_list(path=DATA_PATH, file_ext=EXT, file_init=INIT)
 for grid_file in grid_files:
     grid_data = pd.read_csv(grid_file['path'], skiprows=[0, 1, 2, 3, 4], sep='\s+', header=None, index_col=False)
     fc_descend = grid_data.stack().dropna().sort_values(ascending=False).reset_index(drop=True)
