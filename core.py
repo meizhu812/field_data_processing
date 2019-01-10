@@ -1,11 +1,12 @@
+import os
+import time
+from tools import get_files_list
+from accessories import Timer, Progress
 from dataclasses import dataclass
 from itertools import islice
+from multiprocessing import Pool
+import pandas as pd
 from pandas.tseries.offsets import Minute
-from pandas import concat, DataFrame, read_csv, read_pickle
-from multiprocessing import freeze_support, Pool
-from accessories import Timer, show_async_progress, show_map_progress
-import os, time
-from _datatools import get_files_list
 
 
 @dataclass
@@ -38,7 +39,7 @@ class RawData:
     file_pattern: dict
     data_period: None = None
     data_files = []
-    data = DataFrame()
+    data = pd.DataFrame()
 
     def __post_init__(self):
         self.raw_path = self.project.path + self.project.raw_sub + self.sub_path
@@ -52,7 +53,6 @@ class RawData:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         print("Finished processing data set [{}]".format(self.name))
-        del self
 
     def get_data(self):
         try:
@@ -76,39 +76,41 @@ class RawData:
 
     def _read_pickle(self):
         pickle_path = self.temp_path + self.name
-        print("# Reading data from pickle:\n"
-              "# [{}]".format(pickle_path))
-        data = read_pickle(pickle_path)
+        print("--# Reading data from pickle:\n"
+              "--# [{}]".format(pickle_path))
+        data = pd.read_pickle(pickle_path)
         return data
 
     def _save_data(self):
         pickle_path = self.temp_path + self.name
-        print("# Saving data to pickle:\n"
-              "# [{}]".format(pickle_path))
+        print("--# Saving data to pickle:\n"
+              "--# [{}]".format(pickle_path))
         self.data.to_pickle(pickle_path)
 
     @staticmethod
-    def _read_data_file(data_file: dict) -> DataFrame:
-        datum = read_csv(data_file['path'], **data_file['data_format'])
+    def _read_data_file(data_file: dict) -> pd.DataFrame:
+        datum = pd.read_csv(data_file['path'], **data_file['data_format'])
         datum.set_index(datum.columns[0], inplace=True)
         return datum
 
     def _merge_data(self):
         timer_merge = Timer()
         timer_merge.start("Reading data files for merging", "Initializing")
+
         with Pool(self.project.cores) as p:
             timer_merge.switch("Reading with {} processes".format(self.project.cores))
             datum_async_list = p.map_async(self._read_data_file, self.data_files)
-            show_map_progress(datum_async_list)
+            progress=Progress(datum_async_list,'map')
+            progress.show()
         timer_merge.switch("Merging data")
-        self.data = concat(datum_async_list.get())
+        self.data = pd.concat(datum_async_list.get())
         timer_merge.switch("Saving data")
         os.makedirs(self.temp_path, exist_ok=True)
         self._save_data()
         timer_merge.stop()
 
     @staticmethod
-    def split_data_chunk(data_chunk: DataFrame, data_period, output_path: str):
+    def split_data_chunk(data_chunk: pd.DataFrame, data_period, output_path: str):
         i = 0
         while i < len(data_period):
             start_time = data_period[i]
@@ -129,16 +131,16 @@ class RawData:
         timer_split.start("Splitting data files", "Processing data")
         data_chunks = self.chunk_data(self.data, self.data_period, self.project.cores)
         with Pool(self.project.cores) as p:
-            timer_split.switch('Writing data files')
+            timer_split.switch('Preparing data for output')
             results = [p.apply_async(self.split_data_chunk, (*data_chunk_n_period, self.output_path)) for
                        data_chunk_n_period in data_chunks]
-            input()
-
-            show_async_progress(results)
+            timer_split.switch('Writing data files')
+            progress=Progress(results,'apply_list')
+            progress.show()
             timer_split.stop()
 
     @staticmethod
-    def chunk_data(data: DataFrame, data_period, cpus=os.cpu_count()):
+    def chunk_data(data: pd.DataFrame, data_period, cpus=os.cpu_count()):
         chunk_size, extra = divmod(len(data_period), cpus * 8)
         if extra:
             chunk_size += 1
