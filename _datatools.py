@@ -3,11 +3,6 @@
 #
 """
 import os
-from pandas import DataFrame, read_csv, read_pickle, concat
-from pandas.tseries.offsets import Minute
-from multiprocessing import Pool, freeze_support
-from accessories import Timer, show_progress
-from itertools import islice
 
 
 def get_files_list(*, path: str, file_init: str, file_ext: str) -> list:

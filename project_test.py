@@ -1,13 +1,8 @@
 from multiprocessing import freeze_support
-from core import ProjectConfig, DataSet
+from core import prepare_data
 from parameters.test_parameters import PROJECT, SONIC, AMMONIA_H
 
 if __name__ == '__main__':
     freeze_support()
-    with ProjectConfig(**PROJECT) as project:
-        with DataSet(project=project, **SONIC) as sonic:
-            sonic.get_data()
-            sonic.process_data()
-        with DataSet(project=project, **AMMONIA_H) as ammonia:
-            ammonia.get_data()
-            ammonia.process_data()
+    prepare_data(PROJECT, SONIC)
+    prepare_data(PROJECT, AMMONIA_H)

@@ -3,8 +3,8 @@ from itertools import islice
 from pandas.tseries.offsets import Minute
 from pandas import concat, DataFrame, read_csv, read_pickle
 from multiprocessing import freeze_support, Pool
-from accessories import Timer, show_progress
-import os
+from accessories import Timer, show_async_progress, show_map_progress
+import os, time
 from _datatools import get_files_list
 
 
@@ -13,9 +13,9 @@ class ProjectConfig:
     name: str
     path: str
     raw_sub: str
-    output_sub: str
+    prep_sub: str
     freq: str
-    cpus: int
+    cores: int = os.cpu_count()
 
     def __post_init__(self):
         self.temp_path = self.path + r'\temp'
@@ -29,28 +29,30 @@ class ProjectConfig:
 
 
 @dataclass
-class DataSet:
+class RawData:
     project: ProjectConfig
     name: str
     data_type: str
     sub_path: str
     data_format: dict
     file_pattern: dict
-    data_period: None
+    data_period: None = None
     data_files = []
     data = DataFrame()
 
     def __post_init__(self):
         self.raw_path = self.project.path + self.project.raw_sub + self.sub_path
         self.temp_path = self.project.temp_path + self.sub_path + '\\'
-        self.output_path = self.project.path + self.project.output_sub + self.sub_path + '\\'
+        self.output_path = self.project.path + self.project.prep_sub + self.sub_path + '\\'
 
     def __enter__(self):
         print("\nProcessing data set [{}]".format(self.name))
+        time.sleep(0.5)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         print("Finished processing data set [{}]".format(self.name))
+        del self
 
     def get_data(self):
         try:
@@ -58,7 +60,11 @@ class DataSet:
         except FileNotFoundError:
             print("Pickle file does not exist!")
             self.data_files = get_files_list(path=self.raw_path, **self.file_pattern)
+            for datafile in self. data_files:
+                datafile['data_format'] = self.data_format
             self._merge_data()
+        except Exception as e:
+            print(e)
 
     def process_data(self):
         if self.data_type == 'SONIC':
@@ -66,7 +72,7 @@ class DataSet:
         elif self.data_type == 'AMMONIA':
             self._ammonia_resample()
         else:
-            print("Not processed.")
+            input("Check data type! Press Enter to continue.")
 
     def _read_pickle(self):
         pickle_path = self.temp_path + self.name
@@ -82,45 +88,57 @@ class DataSet:
         self.data.to_pickle(pickle_path)
 
     @staticmethod
-    def _read_data_file(data_file: dict, data_format: dict) -> DataFrame:
-        datum = read_csv(data_file['path'], **data_format)
+    def _read_data_file(data_file: dict) -> DataFrame:
+        datum = read_csv(data_file['path'], **data_file['data_format'])
         datum.set_index(datum.columns[0], inplace=True)
         return datum
 
     def _merge_data(self):
         timer_merge = Timer()
         timer_merge.start("Reading data files for merging", "Initializing")
-        with Pool(self.project.cpus) as p:
-            timer_merge.switch("Reading with %i processes" % self.project.cpus)
-            datum_async_list = p.starmap_async(self._read_data_file,
-                                               [(data_file, self.data_format) for data_file in self.data_files])
-            show_progress(datum_async_list)
-            datum_list = datum_async_list.get()
+        with Pool(self.project.cores) as p:
+            timer_merge.switch("Reading with {} processes".format(self.project.cores))
+            datum_async_list = p.map_async(self._read_data_file, self.data_files)
+            show_map_progress(datum_async_list)
         timer_merge.switch("Merging data")
-        self.data = concat(datum_list)
+        self.data = concat(datum_async_list.get())
         timer_merge.switch("Saving data")
         os.makedirs(self.temp_path, exist_ok=True)
         self._save_data()
         timer_merge.stop()
 
+    @staticmethod
+    def split_data_chunk(data_chunk: DataFrame, data_period, output_path: str):
+        i = 0
+        while i < len(data_period):
+            start_time = data_period[i]
+            end_time = start_time + Minute(15)
+            try:
+                data_part = data_chunk[start_time:end_time]
+                part_name = str(end_time.date()) + '_' + str(end_time.time()).replace(':', '-')[:-3]
+                file_path = output_path + '\\' + part_name + '.csv'
+                data_part.to_csv(file_path, index=False)
+            except Exception as e:
+                print(e)
+            i += 1
+        return True
+
     def _sonic_split(self):
-        data_quality = DataFrame([])
-        data_quality['time'] = self.data_period
-        data_quality['count'] = -1
         os.makedirs(self.output_path, exist_ok=True)
         timer_split = Timer()
         timer_split.start("Splitting data files", "Processing data")
-        data_period_divided_all = self.data_period_divide(self.data, self.data_period, self.project.cpus)
-        with Pool(self.project.cpus) as p:
+        data_chunks = self.chunk_data(self.data, self.data_period, self.project.cores)
+        with Pool(self.project.cores) as p:
             timer_split.switch('Writing data files')
-            results = [p.apply_async(self.split_data, (data_period_divided[0], data_period_divided[1], self.output_path)) for
-                       data_period_divided in data_period_divided_all]
-            print(len(results))
-            for result in results:
-                result.wait()
+            results = [p.apply_async(self.split_data_chunk, (*data_chunk_n_period, self.output_path)) for
+                       data_chunk_n_period in data_chunks]
+            input()
+
+            show_async_progress(results)
+            timer_split.stop()
 
     @staticmethod
-    def data_period_divide(data: DataFrame, data_period, cpus=os.cpu_count()):
+    def chunk_data(data: DataFrame, data_period, cpus=os.cpu_count()):
         chunk_size, extra = divmod(len(data_period), cpus * 8)
         if extra:
             chunk_size += 1
@@ -135,23 +153,8 @@ class DataSet:
             end_time = divide_time[j] + Minute(15)
             try:
                 yield (data[start_time:end_time], divide_time)
-            except:
-                pass
-
-    @staticmethod
-    def split_data(data_divided: DataFrame, divide_time, output_dir: str):
-        i = 0
-        while i < len(divide_time):
-            try:
-                data_part = data_divided[divide_time[i]:(divide_time[i] + Minute(15))]
-                part_name = str((divide_time[i] + Minute(15)).date()) + '_' + str(
-                    (divide_time[i] + Minute(15)).time()).replace(':', '-')[:-3]
-                file_path = output_dir + '\\' + part_name + '.csv'
-                data_part.to_csv(file_path, index=False)
             except Exception as e:
                 print(e)
-            i += 1
-        return True
 
     def _ammonia_resample(self):
         print("\nResampling data")
@@ -160,3 +163,10 @@ class DataSet:
         data_resamp = self.data.resample(self.project.freq).mean()
         os.makedirs(self.output_path, exist_ok=True)
         data_resamp.to_csv(self.output_path + r'\data_resamp.csv')
+
+
+def prepare_data(project_param, raw_data_param):
+    with ProjectConfig(**project_param) as project:
+        with RawData(project=project, **raw_data_param) as raw_data:
+            raw_data.get_data()
+            raw_data.process_data()

@@ -4,9 +4,8 @@ from pandas import date_range
 PROJECT = dict(name="test_Project",
                path=r'D:\Truman\Temp\test_project',
                raw_sub=r'\00_raw',
-               output_sub=r'\01_processed',
-               freq='15T',
-               cpus=16)
+               prep_sub=r'\01_prepared',
+               freq='15T')
 SONIC = dict(name="test_sonic",
              data_type='SONIC',
              sub_path=r'\test_sonic',

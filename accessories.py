@@ -43,12 +43,36 @@ class Timer:
         return elapsed_total
 
 
-def show_progress(progress: pool.MapResult):
+def show_map_progress(progress: pool.MapResult):
     total = progress.__getattribute__('_number_left')
     while not progress.ready():
         remain = progress.__getattribute__('_number_left')
         print("\r%i/%i remains" % (remain, total), end='')
-        sleep(1)
+        sleep(0.5)
+
+
+def show_async_progress(async_list: list):
+    total = len(async_list)
+    while 1:
+        completed = 0
+        for async_result in async_list:
+            if async_result.ready():
+                completed += 1
+        remain = total - completed
+        print("\r%i/%i remains" % (remain, total), end='')
+        if remain == 0:
+            return
+        sleep(0.5)
+
+
+def main_msg(msg: str):
+    print(msg)
+    sleep(1)
+
+
+def sub_msg(msg: str):
+    print(msg)
+    sleep(0.5)
 
 
 class ProgressBar:
