@@ -1,7 +1,7 @@
 import os
 import time
 from tools import get_files_list
-from accessories import Timer, Progress
+from gadgets import Timer, Progress
 from dataclasses import dataclass
 from itertools import islice
 from multiprocessing import Pool
@@ -60,7 +60,7 @@ class RawData:
         except FileNotFoundError:
             print("Pickle file does not exist!")
             self.data_files = get_files_list(path=self.raw_path, **self.file_pattern)
-            for datafile in self. data_files:
+            for datafile in self.data_files:
                 datafile['data_format'] = self.data_format
             self._merge_data()
         except Exception as e:
@@ -75,14 +75,14 @@ class RawData:
             input("Check data type! Press Enter to continue.")
 
     def _read_pickle(self):
-        pickle_path = self.temp_path + self.name
+        pickle_path = self.temp_path + self.name + '.zip'
         print("--# Reading data from pickle:\n"
               "--# [{}]".format(pickle_path))
         data = pd.read_pickle(pickle_path)
         return data
 
     def _save_data(self):
-        pickle_path = self.temp_path + self.name
+        pickle_path = self.temp_path + self.name + '.zip'
         print("--# Saving data to pickle:\n"
               "--# [{}]".format(pickle_path))
         self.data.to_pickle(pickle_path)
@@ -100,7 +100,7 @@ class RawData:
         with Pool(self.project.cores) as p:
             timer_merge.switch("Reading with {} processes".format(self.project.cores))
             datum_async_list = p.map_async(self._read_data_file, self.data_files)
-            progress=Progress(datum_async_list,'map')
+            progress = Progress(datum_async_list, 'map')
             progress.show()
         timer_merge.switch("Merging data")
         self.data = pd.concat(datum_async_list.get())
@@ -135,7 +135,7 @@ class RawData:
             results = [p.apply_async(self.split_data_chunk, (*data_chunk_n_period, self.output_path)) for
                        data_chunk_n_period in data_chunks]
             timer_split.switch('Writing data files')
-            progress=Progress(results,'apply_list')
+            progress = Progress(results, 'apply_list')
             progress.show()
             timer_split.stop()
 
