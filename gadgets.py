@@ -3,7 +3,6 @@
 gadgets
 """
 from time import time, sleep
-from multiprocessing import pool
 
 
 class Timer:
@@ -26,7 +25,7 @@ class Timer:
         print('0%i| [%s Completed in %s seconds.]\n' % (self.phase, self.action, self.elapsed))
         self.phase += 1
         self.action = new_action
-        print("0%i> %s..." % (self.phase, self.action),1)
+        print("0%i> %s..." % (self.phase, self.action), 1)
         self.last_time = time()
 
     def stop(self):
@@ -45,7 +44,7 @@ class Timer:
         return elapsed_total
 
 
-class Progress():
+class Progress:
     def __init__(self, result_object, result_type):
         self.result = result_object
         self.type = result_type
@@ -57,7 +56,7 @@ class Progress():
             print('!!!check code!!!')
         self.progress = 0
         self.output = 0
-        self.start_time=time()
+        self.start_time = time()
 
     def _show_remain_time(self):
         if self.progress == 0:
